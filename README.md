@@ -124,7 +124,7 @@ If you find this work useful, please cite:
 
 ---
 
-## 📁 Repository Structure (Preview)
+## 📁 Repository Structure
 
 ```
 KMR-RAG/
