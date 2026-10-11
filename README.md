@@ -1,174 +1,207 @@
-# KMR-RAG: Knowledge-guided Multi-document Retrieval-Augmented Generation and Refinement for Automated Cancer Registry Abstraction
+# KMR-RAG: Knowledge-guided Multi-document Retrieval-Augmented Generation and Refinement for Cancer Registry Abstraction
 
-<img width="1148" height="1108" alt="image" src="https://github.com/user-attachments/assets/0e72f73c-3d16-4ceb-b7e0-4de86ed09f29" />
+This repository provides the source code accompanying the paper:
 
-
-<p align="center">
-  <a href="#"><img alt="Paper" src="https://img.shields.io/badge/Paper-IJMI%20(Under%20Review)-blue"/></a>
-  <a href="#"><img alt="License" src="https://img.shields.io/badge/License-MIT-green"/></a>
-  <a href="#"><img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-yellow"/></a>
-  <a href="#"><img alt="Code" src="https://img.shields.io/badge/Code-Coming%20Soon-orange"/></a>
-</p>
+> **KMR-RAG: Knowledge-guided Multi-document Retrieval-Augmented Generation and Refinement for Automated Cancer Registry Abstraction**  
+> *PLOS ONE* (under review)
 
 ---
 
-## 📋 Overview
+## Overview
 
-**KMR-RAG** is a knowledge-guided multi-document Retrieval-Augmented Generation and Refinement framework for automated cancer registry abstraction from longitudinal clinical records. It extracts eight structured colorectal cancer registry fields (histological type, grade, tumor size, examined/positive nodes, and pathological TNM staging) from heterogeneous electronic medical records — without any site-specific model retraining.
+KMR-RAG is a training-free framework for automated cancer registry abstraction from longitudinal clinical records. It combines three components:
 
-The framework integrates three core components:
+- **Field-specific retrieval**: dense semantic retrieval (for narrative and categorical fields) and BM25 sparse retrieval (for numerical fields), guided by a field taxonomy.
+- **Knowledge-augmented prompting**: each LLM inference call receives registry coding rules and a structured prompt template alongside the retrieved passages.
+- **Iterative refinement**: an initial extraction pass (Pass 1) is followed by one or more refinement passes (Passes 2–*k*) in which the LLM revises its answer using updated retrieved context.
 
-- **Knowledge-guided prompt engineering** — AJCC 8th Edition and Taiwan Cancer Registry (TCR) coding rules are embedded directly as prompt constraints, enforcing valid code outputs and evidence grounding.
-- **Hybrid retrieval strategy** — BM25 for numerical and categorical fields; dense semantic retrieval for contextual fields. Validated across 12 embedding models.
-- **Two-pass iterative refinement** — sequentially aggregates evidence across retrieved document chunks, contributing up to **+22.1 percentage points** of performance improvement.
-
----
-
-## 📊 Results
-
-Evaluated on **403 colorectal cancer patients** and **2,594 longitudinal clinical reports** from four hospital systems in Taiwan (KMUH, CMUH, KAFGH, PPH):
-
-| Hospital | Language | Overall F1 | vs. HAN |
-|----------|----------|-----------|---------|
-| KMUH | English | **0.842** | +6.3 pp |
-| CMUH | English | **0.705** | +9.7 pp |
-| KAFGH | Chinese / Mixed | **0.556** | +52.4 pp |
-| PPH | Chinese | **0.666** | +56.2 pp |
-
-> KMR-RAG outperforms all baselines at CMUH and surpasses HAN by up to **+46.2 pp** at KAFGH — where the supervised model collapses to near-zero performance.
+The framework is evaluated on colorectal cancer records from four hospitals in Taiwan (KMUH, CMUH, KAFGH, PPH) using four locally deployable LLMs: Mistral-7B-v0.3, LLaMA-3.1-8B-Instruct, DeepSeek-R1-Distill-LLaMA-8B, and DeepSeek-R1-Distill-Qwen-7B, deployed via [vLLM](https://github.com/vllm-project/vllm) on an NVIDIA RTX 3090.
 
 ---
 
-## 🏗️ Architecture
+## Repository Structure
 
 ```
-Patient Records (n reports, ≥18 months)
-        │
-        ▼
-┌─────────────────────┐
-│  Phase 1: Indexing  │  Per-patient vector database
-│  chunk → encode     │  (prevents cross-patient contamination)
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│  Phase 2: Retrieval │  BM25 (numerical/categorical fields)
-│  field-specific     │  Dense embeddings (semantic fields)
-│  query q_f → top-k  │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│  Phase 3: Prompt    │  M_R: AJCC/TCR coding rules
-│  construction       │  M_T: evidence grounding constraints
-│                     │  M_C: retrieved chunks
-│                     │  M_O: JSON output schema
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│  Phase 4: Two-pass  │  Pass 1: initial extraction
-│  LLM inference      │  Pass 2..k: iterative refinement
-│                     │  with hard modification constraints
-└─────────────────────┘
+KMR-RAG/
+├── kmr_rag/
+│   ├── agents/
+│   │   ├── agent_system.py       # Core CancerRegistryAgentSystem (LlamaIndex-based)
+│   │   └── toolspecs.py          # Retrieval tool specs and prompt templates
+│   └── datasets/
+│       └── utils.py              # CRCPlainTextReader: multi-hospital text loader
+├── notebooks/
+│   ├── kmr_rag_main.ipynb             # Main experiment notebook (KMR-RAG evaluation)
+│   ├── experiment_runner.ipynb        # Experiment runner with ablation configurations
+│   ├── llamaindex_crc_multi_doc.ipynb # LlamaIndex multi-document CRC exploration
+│   └── llamaindex_multi_doc_exploration.ipynb  # LlamaIndex multi-document baseline exploration
+├── demo_app.py                   # Streamlit demo application
+└── README.md
 ```
 
 ---
 
-## 🔧 System Requirements
+## Requirements
 
-| Component | Specification |
-|-----------|-------------|
-| GPU | NVIDIA RTX 3090 (24 GB VRAM) or equivalent |
-| LLM | LLaMA-3.1-8B-Instruct (recommended) |
-| Inference server | vLLM / LMStudio |
-| Embedding | bge-large-en-v1.5 (KMUH), BM25 (CMUH), BGE-fr-en (KAFGH), mE5-large (PPH) |
-| Python | 3.10+ |
-| Deployment | Fully on-premise — no external API calls |
+- Python 3.10+
+- [LlamaIndex](https://github.com/run-llama/llama_index) (llama-index-core, llama-index-llms-huggingface, llama-index-embeddings-huggingface)
+- [vLLM](https://github.com/vllm-project/vllm) (for local LLM serving)
+- [Streamlit](https://streamlit.io) (for the demo application)
+- PyTorch with CUDA
 
----
+Install dependencies:
 
-## 📦 Code Release
-
-> **Code, prompt templates, and evaluation scripts will be released upon paper acceptance.**
-
-The release will include:
-
-- [ ] Complete KMR-RAG inference pipeline
-- [ ] Prompt templates for all 8 registry fields (AJCC/TCR rules)
-- [ ] Hybrid retrieval module (BM25 + dense)
-- [ ] Two-pass refinement implementation
-- [ ] Evaluation scripts (micro-F1, bootstrap CI)
-- [ ] Per-hospital retrieval model selection guide
-- [ ] Example configuration files
-
-To be notified of the release, please **Watch** or **Star** this repository.
+```bash
+pip install llama-index llama-index-llms-openai-like llama-index-embeddings-huggingface \
+            streamlit streamlit-timeline streamlit-markmap \
+            transformers sentence-transformers rank_bm25
+```
 
 ---
 
-## 📄 Citation
+## LLM Serving with vLLM
 
-If you find this work useful, please cite:
+The framework calls LLMs through a local OpenAI-compatible endpoint served by vLLM. Example commands for each supported backbone:
+
+**Mistral-7B-Instruct-v0.3**
+```bash
+docker run --gpus all --rm -it \
+  -v $PWD/models/LLM/mistralai/Mistral-7B-Instruct-v0.3:/model \
+  -p 8000:8000 \
+  vllm/vllm-openai:latest \
+  --model /model \
+  --served-model-name Mistral-7B-Instruct-v0.3 \
+  --gpu-memory-utilization 0.9 \
+  --max-model-len 8192 \
+  --max-num-seqs 2 \
+  --load-format safetensors \
+  --disable-log-stats
+```
+
+**LLaMA-3.1-8B-Instruct**
+```bash
+docker run --gpus all --rm -it \
+  -v $PWD/models/LLM/meta-llama/Meta-Llama-3.1-8B-Instruct:/model \
+  -p 8000:8000 \
+  vllm/vllm-openai:latest \
+  --model /model \
+  --served-model-name Llama-3.1-8B-Instruct \
+  --gpu-memory-utilization 0.9 \
+  --max-model-len 8192 \
+  --max-num-seqs 2 \
+  --load-format safetensors \
+  --disable-log-stats \
+  --enable-prefix-caching
+```
+
+**DeepSeek-R1-Distill-LLaMA-8B**
+```bash
+docker run --gpus all --rm -it \
+  -v $PWD/models/LLM/deepseek-ai/DeepSeek-R1-Distill-Llama-8B:/model \
+  -p 8000:8000 \
+  vllm/vllm-openai:latest \
+  --model /model \
+  --served-model-name DeepSeek-R1-Distill-Llama-8B \
+  --gpu-memory-utilization 0.9 \
+  --max-model-len 8192 \
+  --max-num-seqs 2 \
+  --load-format safetensors \
+  --disable-log-stats \
+  --enable-prefix-caching
+```
+
+**DeepSeek-R1-Distill-Qwen-7B**
+```bash
+docker run --gpus all --rm -it \
+  -v $PWD/models/LLM/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B:/model \
+  -p 8000:8000 \
+  vllm/vllm-openai:latest \
+  --model /model \
+  --served-model-name DeepSeek-R1-Distill-Qwen-7B \
+  --gpu-memory-utilization 0.9 \
+  --max-model-len 8192 \
+  --max-num-seqs 2 \
+  --load-format safetensors \
+  --disable-log-stats \
+  --enable-prefix-caching
+```
+
+By default, the notebooks connect to `http://localhost:8000/v1`. Update the `api_base` parameter to match your server address.
+
+---
+
+## Embedding Models
+
+Retrieval embedding models are loaded from a local `.models/Retriever/` directory. The experiments evaluated a range of multilingual and biomedical embedding models. Place each model under:
+
+```
+.models/Retriever/<model-name>/
+```
+
+Models used in the paper include multilingual-e5-large-instruct, GIST-large-Embedding-v0, bge-large-en-v1.5, mxbai-embed-large-v1, and others. Selection criteria are described in Section 2.2 of the paper.
+
+---
+
+## Dataset
+
+The clinical datasets used in this study contain protected health information and are not publicly available due to patient privacy regulations and institutional data governance requirements. Researchers who wish to access the data for verification or collaborative purposes may contact the corresponding author directly.
+
+The `kmr_rag/datasets/utils.py` module provides a `CRCPlainTextReader` class that loads pre-processed, de-identified clinical reports in plain text format. The expected directory structure for each hospital site is:
+
+```
+<hospital_id>/
+  testset/
+    <patient_id_1>.txt
+    <patient_id_2>.txt
+    ...
+```
+
+Each `.txt` file contains one patient's longitudinal clinical reports, with individual reports separated by a delimiter line (`############################################`).
+
+---
+
+## Running the Demo Application
+
+```bash
+streamlit run demo_app.py
+```
+
+Place the test set under `datasets/crc/testset/` and ensure the vLLM endpoint is running before launching.
+
+---
+
+## Running Experiments
+
+See `notebooks/kmr_rag_main.ipynb` and `notebooks/experiment_runner.ipynb` for the full experiment pipeline, including:
+
+- Hospital and retrieval model selection
+- Ablation over retrieval depth (*k* ∈ {1, 3, 6}), chunk size (*c* ∈ {256, 512, 1024}), and refinement passes
+- Per-field and overall macro-average F1 evaluation
+
+---
+
+## Citation
+
+If you use this code in your research, please cite:
 
 ```bibtex
-@article{kmrrag2025,
-  title   = {Knowledge-guided Multi-document Retrieval-Augmented
-             Generation and Refinement ({KMR-RAG}) for Automated
-             Cancer Registration: A Multi-center Evaluation},
-  author  = {[Authors]},
-  journal = {International Journal of Medical Informatics},
-  year    = {2025},
+@article{KMR-RAG2026,
+  title   = {{KMR-RAG}: Knowledge-guided Multi-document Retrieval-Augmented Generation
+             and Refinement for Automated Cancer Registry Abstraction},
+  author  = {[Author list to be completed upon publication]},
+  journal = {PLOS ONE},
+  year    = {2026},
   note    = {Under review}
 }
 ```
 
 ---
 
-## 📁 Repository Structure
+## License
 
-```
-KMR-RAG/
-├── README.md
-├── requirements.txt
-├── config/
-│   └── hospital_configs/        # per-hospital retrieval settings
-├── src/
-│   ├── indexing/                # document chunking & embedding
-│   ├── retrieval/               # BM25 + dense hybrid retrieval
-│   ├── prompts/                 # M_R, M_T, M_C, M_O modules
-│   ├── refinement/              # two-pass refinement engine
-│   └── evaluation/              # F1, bootstrap CI
-├── prompts/
-│   ├── original_template.txt    # Pass 1 prompt
-│   ├── refinement_template.txt  # Pass 2..k prompt
-│   └── field_rules/             # per-field AJCC/TCR rules
-│       ├── H_histological.txt
-│       ├── G_grade.txt
-│       ├── TS_tumor_size.txt
-│       ├── EN_examined_nodes.txt
-│       ├── PN_positive_nodes.txt
-│       └── TNM_staging.txt
-└── supplementary/               # full prompt templates (paper)
-```
+The source code in this repository is released under the [MIT License](LICENSE).
 
 ---
 
-## 🏥 Dataset
+## Contact
 
-This study used a retrospective multi-center colorectal cancer dataset from four hospitals in Taiwan. Due to patient privacy regulations, the raw clinical data **cannot be shared**. However, the following are provided:
-
-- Anonymized evaluation statistics
-- Gold-standard field distribution
-- Inter-hospital documentation heterogeneity descriptions
-
----
-
-## 📬 Contact
-
-For questions regarding the paper or early access to code, please open an **Issue** or contact the corresponding author at `[hjdai@nkust.edu.tw]`.
-
----
-
-<p align="center">
-<sub>© 2025 · Submitted to International Journal of Medical Informatics · Code releasing upon acceptance</sub>
-</p>
+For questions about the code or requests regarding the clinical datasets, please contact the corresponding author at the affiliation listed in the paper.
